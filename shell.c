@@ -72,7 +72,7 @@ Command readcmd()
   char *line = readline();
   printf("readcmd: readline() returns '%s'\n", line);
   Command cmd = parsecmd(line);
-  //cmd = checkcmd(cmd);
+  cmd = checkcmd(cmd);
   return cmd;
 }
 
@@ -195,13 +195,14 @@ char *cmdconcat_rest(Command cmd, int from, char *delim)
   int space = cmd.argc - from - 1;
   int len = space + 1;
   for (int i = from; i < cmd.argc; i++) {
-    len += strlen(cmd.argv[i]);
+    //len += strlen(cmd.argv[i]);
+    len += strlen(cmdget(cmd, i));
   }
   char *line = (char*)malloc(len);
-  strcpy(line, cmd.argv[from]);
+  strcpy(line, cmdget(cmd, from));
   for (int i = from+1; i < cmd.argc; i++) {
     strcat(line, delim);
-    strcat(line, cmd.argv[i]);
+    strcat(line, cmdget(cmd, i));
   }
   return line;
 }
@@ -276,8 +277,8 @@ Alias *findfreealias()
 Command checkcmd(Command cmd)
 {
   for (int i = 1; i < cmd.argc; i++) {
-    if (cmd.argv[i][0] == '*') {
-      char *postfix = cmd.argv[i][1];
+    if (cmdget(cmd, i)[0] == '*') {
+      char *postfix = cmdget(cmd, i)[1];
       int l = strlen(postfix);
       char cwd[MAXLINE];
       getcwd(cwd, sizeof(cwd));
@@ -285,7 +286,13 @@ Command checkcmd(Command cmd)
       int dfd = dirfd(dir);
       struct dirent *ent;
       while ((ent = readdir(dir)) != NULL) {
-        
+        char *name = ent->d_name;
+        int len = strlen(name);
+        if (strcmp(&name[len-l], postfix) == 0) {
+          linsert(lfind(&cmd.node, i), name);
+          i++;
+          cmd.argc++;
+        }
       }
     }
   }
