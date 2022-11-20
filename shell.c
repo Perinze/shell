@@ -17,6 +17,7 @@ typedef struct _Node {
 typedef struct {
   int argc;
   char **argv;
+  Node node;
 } Command;
 
 typedef struct {
@@ -47,6 +48,10 @@ char *cmdconcat_rest(Command, int, char*);
 void alias(Command);
 Alias *findfreealias();
 Command checkcmd(Command);
+void linsert(Node*, char*);
+Node *llast(Node*);
+void lappend(Node*, char*);
+Node *lfind(Node*, int);
 
 int main()
 {
@@ -67,16 +72,20 @@ Command readcmd()
   char *line = readline();
   printf("readcmd: readline() returns '%s'\n", line);
   Command cmd = parsecmd(line);
-  cmd = checkcmd(cmd);
+  //cmd = checkcmd(cmd);
   return cmd;
 }
 
 void dispatch(Command cmd)
 {
+  printf("dispatch: enter\n");
   if (cmd.argc == 0) return;
   char *first = cmdget(cmd, 0);
   printf("dispatch: first is '%s'\n", first);
   char **argv = cmdgetall(cmd);
+  for (int i = 0; i < cmd.argc; i++) {
+    printf("dispatch: argv[%d] is '%s'\n", i, argv[i]);
+  }
   if (strcmp(first, "echo") == 0) {
     cmdprint_rest(cmd, 1);
   } else if (strcmp(first, "exit") == 0) {
@@ -112,24 +121,37 @@ char *readline()
 Command parsecmd(char *line)
 {
   Command cmd;
+  cmd.node.next = NULL;
   // parse in buffer
-  char *buf[MAXBUF];
+  //char *buf[MAXBUF];
+  char *buf;
   cmd.argc = 0;
-  buf[0] = strtok(line, DELIM);
-  if (buf[0] == NULL) {
+  //buf[0] = strtok(line, DELIM);
+  buf = strtok(line, DELIM);
+  //if (buf[0] == NULL) {
+  if (buf == NULL) {
     return cmd;
   }
-  printf("parsecmd: buf[0] is '%s'\n", buf[0]);
-  while (buf[++cmd.argc] = strtok(NULL, DELIM)) {
-    printf("parsecmd: buf[%d] is '%s'\n", cmd.argc, buf[cmd.argc]);
+  cmd.argc++;
+  lappend(&cmd.node, buf);
+  printf("parsecmd: buf[0] is '%s'\n", buf);
+  //while (buf[++cmd.argc] = strtok(NULL, DELIM)) {
+  while (buf = strtok(NULL, DELIM)) {
+    ++cmd.argc;
+    printf("parsecmd: buf[%d] is '%s'\n", cmd.argc, buf);
+    lappend(&cmd.node, buf);
   }
   printf("parsecmd: argc is %d\n", cmd.argc);
 
+  /*
   cmd.argv = (char**)malloc((cmd.argc + 1) * sizeof(char*));
   cmd.argv[cmd.argc] = NULL;
+  */
+  Node *node = &cmd.node;
   for (int i = 0; i < cmd.argc; i++) {
-    cmd.argv[i] = buf[i];
-    //printf("parsecmd: argv[0] is '%s'\n", cmd.argv[0]);
+    //cmd.argv[i] = buf[i];
+    node = node->next;
+    printf("parsecmd: argv[0] is '%s'\n", node->value);
   }
   return cmd;
 }
@@ -145,18 +167,25 @@ int counttok(char *line)
 
 char *cmdget(Command cmd, int j)
 {
-  return cmd.argv[j];
+  return lfind(&cmd.node, j)->value;
 }
 
 char **cmdgetall(Command cmd)
 {
-  return cmd.argv;
+  char **argv = (char**)malloc(cmd.argc * sizeof(char*));
+  Node *node = cmd.node.next;
+  for (int i = 0; i < cmd.argc; i++) {
+    argv[i] = node->value;
+    node = node->next;
+  }
+  return argv;
 }
 
 void cmdprint_rest(Command cmd, int from)
 {
   for (int i = from; i < cmd.argc; i++) {
-    printf("%s ", cmd.argv[i]);
+    //printf("%s ", cmd.argv[i]);
+    printf("%s ", cmdget(cmd, i));
   }
   puts("");
 }
@@ -260,4 +289,35 @@ Command checkcmd(Command cmd)
       }
     }
   }
+}
+
+void linsert(Node *node, char *s)
+{
+  Node *new = (Node*)malloc(sizeof(Node));
+  new->value = s;
+  new->next = node->next;
+  node->next = new;
+}
+
+Node *llast(Node *node)
+{
+  while (node->next != NULL)
+    node = node->next;
+  return node;
+}
+
+void lappend(Node *node, char *s)
+{
+  node = llast(node);
+  linsert(node, s);
+}
+
+Node *lfind(Node *node, int j)
+{
+  j++;
+  while (j--) {
+    node = node->next;
+  }
+  //printf("lfind: return node containing '%s'\n", node->value);
+  return node;
 }
