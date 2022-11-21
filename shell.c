@@ -4,19 +4,15 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <dirent.h>
+#include "list.h"
 
+#define log printf
 #define MAXBUF 2048
 #define MAXLINE 4096
 #define DELIM " "
 
-typedef struct _Node {
-  char *value;
-  struct _Node *next;
-} Node;
-
 typedef struct {
   int argc;
-  char **argv;
   Node node;
 } Command;
 
@@ -48,10 +44,8 @@ char *cmdconcat_rest(Command, int, char*);
 void alias(Command);
 Alias *findfreealias();
 Command checkcmd(Command);
-void linsert(Node*, char*);
-Node *llast(Node*);
-void lappend(Node*, char*);
-Node *lfind(Node*, int);
+char *checkvar(char*);
+char *checkalias(char*);
 
 int main()
 {
@@ -70,7 +64,11 @@ void prompt()
 Command readcmd()
 {
   char *line = readline();
-  printf("readcmd: readline() returns '%s'\n", line);
+  //log("readcmd: readline() returns '%s'\n", line);
+  line = checkvar(line);
+  //log("readcmd: checkvar '%s'\n", line);
+  line = checkalias(line);
+  //log("readcmd: checkalias '%s'\n", line);
   Command cmd = parsecmd(line);
   cmd = checkcmd(cmd);
   return cmd;
@@ -78,13 +76,13 @@ Command readcmd()
 
 void dispatch(Command cmd)
 {
-  printf("dispatch: enter\n");
+  //log("dispatch: enter\n");
   if (cmd.argc == 0) return;
   char *first = cmdget(cmd, 0);
-  printf("dispatch: first is '%s'\n", first);
+  //log("dispatch: first is '%s'\n", first);
   char **argv = cmdgetall(cmd);
   for (int i = 0; i < cmd.argc; i++) {
-    printf("dispatch: argv[%d] is '%s'\n", i, argv[i]);
+    //log("dispatch: argv[%d] is '%s'\n", i, argv[i]);
   }
   if (strcmp(first, "echo") == 0) {
     cmdprint_rest(cmd, 1);
@@ -134,14 +132,14 @@ Command parsecmd(char *line)
   }
   cmd.argc++;
   lappend(&cmd.node, buf);
-  printf("parsecmd: buf[0] is '%s'\n", buf);
+  //log("parsecmd: buf[0] is '%s'\n", buf);
   //while (buf[++cmd.argc] = strtok(NULL, DELIM)) {
   while (buf = strtok(NULL, DELIM)) {
     ++cmd.argc;
-    printf("parsecmd: buf[%d] is '%s'\n", cmd.argc, buf);
+    //log("parsecmd: buf[%d] is '%s'\n", cmd.argc, buf);
     lappend(&cmd.node, buf);
   }
-  printf("parsecmd: argc is %d\n", cmd.argc);
+  //log("parsecmd: argc is %d\n", cmd.argc);
 
   /*
   cmd.argv = (char**)malloc((cmd.argc + 1) * sizeof(char*));
@@ -151,7 +149,7 @@ Command parsecmd(char *line)
   for (int i = 0; i < cmd.argc; i++) {
     //cmd.argv[i] = buf[i];
     node = node->next;
-    printf("parsecmd: argv[0] is '%s'\n", node->value);
+    //log("parsecmd: argv[0] is '%s'\n", node->value);
   }
   return cmd;
 }
@@ -183,8 +181,8 @@ char **cmdgetall(Command cmd)
 
 void cmdprint_rest(Command cmd, int from)
 {
+  //log("cmdprint_rest: ");
   for (int i = from; i < cmd.argc; i++) {
-    //printf("%s ", cmd.argv[i]);
     printf("%s ", cmdget(cmd, i));
   }
   puts("");
@@ -217,18 +215,18 @@ void set(Command cmd)
   } else {
     char assign[256];
     strncpy(assign, cmdget(cmd, 1), 256);
-    printf("set: assign %s\n", assign);
+    //log("set: assign %s\n", assign);
     char *name = strtok(assign, "=");
     char *value = strtok(NULL, "=");
-    printf("set: name %s\n", name);
-    printf("set: value %s\n", value);
+    //log("set: name %s\n", name);
+    //log("set: value %s\n", value);
     Variable *v = findfreevar();
     v->name = malloc(strlen(name)+1);
     strcpy(v->name, name);
     v->value = malloc(strlen(value)+1);
     strcpy(v->value, value);
-    printf("set: v->name %s\n", v->name);
-    printf("set: v->value %s\n", v->value);
+    //log("set: v->name %s\n", v->name);
+    //log("set: v->value %s\n", v->value);
   }
 }
 
@@ -252,15 +250,15 @@ void alias(Command cmd)
   } else {
     char *name = cmdget(cmd, 1);
     char *line = cmdconcat_rest(cmd, 2, " ");
-    printf("alias: name %s\n", name);
-    printf("alias: line %s\n", line);
+    //log("alias: name %s\n", name);
+    //log("alias: line %s\n", line);
     Alias *a = findfreealias();
     a->name = malloc(strlen(name)+1);
     strcpy(a->name, name);
     a->line = malloc(strlen(line)+1);
     strcpy(a->line, line);
-    printf("alias: a->name %s\n", a->name);
-    printf("alias: a->line %s\n", a->line);
+    //log("alias: a->name %s\n", a->name);
+    //log("alias: a->line %s\n", a->line);
   }
 }
 
@@ -278,8 +276,13 @@ Command checkcmd(Command cmd)
 {
   for (int i = 1; i < cmd.argc; i++) {
     if (cmdget(cmd, i)[0] == '*') {
-      char *postfix = cmdget(cmd, i)[1];
+      char *postfix = &cmdget(cmd, i)[1];
       int l = strlen(postfix);
+      //log("checkcmd: postfix is '%s' with length %d\n", postfix, l);
+      lerase(&cmd.node, i);
+      i--;
+      cmd.argc--;
+      //cmdprint_rest(cmd, 0);
       char cwd[MAXLINE];
       getcwd(cwd, sizeof(cwd));
       DIR *dir = opendir(cwd);
@@ -287,6 +290,7 @@ Command checkcmd(Command cmd)
       struct dirent *ent;
       while ((ent = readdir(dir)) != NULL) {
         char *name = ent->d_name;
+        if (name[0] == '.') continue;
         int len = strlen(name);
         if (strcmp(&name[len-l], postfix) == 0) {
           linsert(lfind(&cmd.node, i), name);
@@ -294,37 +298,66 @@ Command checkcmd(Command cmd)
           cmd.argc++;
         }
       }
+      //cmdprint_rest(cmd, 0);
     }
   }
+  //log("checkcmd: ");
+  //cmdprint_rest(cmd, 0);
+  return cmd;
 }
 
-void linsert(Node *node, char *s)
+char *checkvar(char *line)
 {
-  Node *new = (Node*)malloc(sizeof(Node));
-  new->value = s;
-  new->next = node->next;
-  node->next = new;
-}
+  char *p = line;
+  while (*p != '\0') {
+    if (*p == '$') {
+      for (int i = 0; i < MAXBUF; i++) {
+        if (variables[i].name == NULL) continue;
+        int len = strlen(variables[i].name);
+        char *linevar = (char*)malloc(len+1);
+        strncpy(linevar, p+1, len);
+        linevar[len] = '\0';
+        if (strcmp(linevar, variables[i].name) == 0) {
+          int newlen = strlen(line) + strlen(variables[i].value) - len - 1;
+          char *newline = (char*)malloc(newlen+1);
+          strcpy(newline, line);
+          char *q = newline + (p - line);
+          strcpy(q, variables[i].value);
+          q += strlen(variables[i].value);
+          p += len+1;
+          strcpy(q, p);
+          newline[newlen] = '\0';
 
-Node *llast(Node *node)
-{
-  while (node->next != NULL)
-    node = node->next;
-  return node;
-}
-
-void lappend(Node *node, char *s)
-{
-  node = llast(node);
-  linsert(node, s);
-}
-
-Node *lfind(Node *node, int j)
-{
-  j++;
-  while (j--) {
-    node = node->next;
+          line = newline;
+          p = q-1;
+        }
+      }
+    }
+    p++;
   }
-  //printf("lfind: return node containing '%s'\n", node->value);
-  return node;
+  return line;
+}
+
+char *checkalias(char *line)
+{
+  //printf("checkalias: enter\n");
+  for (int i = 0; i < MAXBUF; i++) {
+    if (aliases[i].name == NULL) continue;
+    int len = 0;
+    while (line[len] != ' ' && line[len] != '\0') len++;
+    //printf("checkalias: arg1 len is %d\n", len);
+    char *arg1 = (char*)malloc(len+1);
+    strncpy(arg1, line, len);
+    arg1[len] = '\0';
+    if (strcmp(arg1, aliases[i].name) == 0) {
+      int newlen = strlen(line) - strlen(arg1) + strlen(aliases[i].line);
+      char *newline = (char*)malloc(newlen+1);
+      strcpy(newline, aliases[i].line);
+      strcpy(newline+strlen(aliases[i].line), line+strlen(arg1));
+      newline[newlen] = '\0';
+      return newline;
+      // mem leak
+    }
+  }
+  return line;
 }
